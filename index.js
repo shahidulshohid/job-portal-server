@@ -35,9 +35,16 @@ async function run() {
     const jobsCollection = client.db('jobPortal').collection('jobs')
     const jobApplicationCollection = client.db('jobPortal').collection('job-applications')
 
-
+    //jobs related apis
     app.get('/jobs', async(req, res) => {
-        const cursor = jobsCollection.find()
+      
+      const email = req.query.email 
+      let query = {}
+      if(email){
+        query = {hr_email: email}
+      }
+      
+        const cursor = jobsCollection.find(query)
         const result = await cursor.toArray()
         res.send(result)
     })
@@ -49,18 +56,81 @@ async function run() {
         res.send(result)
     })
 
+    //app.get('/job-application/:id') ==> get a specific job application by id
+
+    app.get('/job-applications/jobs/:job_id', async(req, res) => {
+      const jobId = req.params.job_id 
+      const query = {job_id: jobId}
+      const result = await jobApplicationCollection.find(query).toArray();
+      res.send(result)
+    })
+
+    app.post('/jobs', async(req, res) => {
+      const newJob = req.body 
+      const result = await jobsCollection.insertOne(newJob)
+      res.send(result)
+    })
+
     // job application apis
     //get all data get one data get some data [0, 1, many ]
     app.get('/job-application', async(req, res) => {
       const email = req.query.email
       const query = {applicant_email: email}
       const result = await jobApplicationCollection.find(query).toArray()
+      
+      //fokira way to aggregate data 
+      for(const application of result) {
+        // console.log(application.job_id)
+        const query1 = {_id: new ObjectId(application.job_id)}
+        const job = await jobsCollection.findOne(query1);
+        if(job){
+          application.title = job.title;
+          application.location = job.location;
+          application.company = job.company;
+          application.company_logo = job.company_logo;
+        }
+      }
+
       res.send(result)
     })
 
     app.post('/job-applications', async(req, res) => {
       const application = req.body 
       const result = await jobApplicationCollection.insertOne(application)
+      //not the best way (use aggregate)
+      //skip --> it 
+      const id = application.job_id
+      const query = {_id: new ObjectId(id)}
+      const job = await jobsCollection.findOne(query)
+      
+      let newCount = 0 
+      if(job.applicationCount){
+        newCount = job.applicationCount + 1
+      }
+      else{
+        newCount = 1
+      }
+      // now update the job info 
+      const filter = {_id: new ObjectId(id)}
+      const updatedDoc = {
+        $set: {
+          applicationCount: newCount
+        }
+      }
+      const updateResult = await jobsCollection.updateOne(filter, updatedDoc)
+      res.send(result)
+    })
+
+    app.patch('/job-applications/:id', async(req, res) => {
+      const id = req.params.id 
+      const filter = {_id: new ObjectId(id)}
+      const data = req.body 
+      const updateDoc = {
+        $set: {
+          status: data.status
+        }
+      }
+      const result = await jobApplicationCollection.updateOne(filter, updateDoc)
       res.send(result)
     })
 
